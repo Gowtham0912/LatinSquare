@@ -1,0 +1,1273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>dMAT Core Module — Latin Square Trainer</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:            #0A0D12;
+    --bg-grid:       #0D1117;
+    --panel:         #12161E;
+    --panel-raised:  #161B24;
+    --border:        #232935;
+    --border-soft:   #1B2029;
+    --text:          #E7EAF0;
+    --text-muted:    #838C9E;
+    --text-dim:      #545D6E;
+    --amber:         #F0A93C;
+    --amber-dim:     #7A5A22;
+    --teal:          #2DD9C4;
+    --red:           #EF5B4E;
+    --blue:          #4F8CF0;
+  }
+  html,body{ background:var(--bg); color:var(--text); font-family:'Inter',sans-serif; }
+  .font-display{ font-family:'Space Grotesk',sans-serif; }
+  .font-mono{ font-family:'IBM Plex Mono',monospace; }
+
+  /* faint instrument-panel grid texture on the page background */
+  .bg-console{
+    background-image:
+      linear-gradient(rgba(240,169,60,0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(240,169,60,0.035) 1px, transparent 1px);
+    background-size: 28px 28px;
+    background-color: var(--bg);
+  }
+
+  .panel{ background:var(--panel); border:1px solid var(--border); }
+  .panel-raised{ background:var(--panel-raised); border:1px solid var(--border); }
+
+  .amber-glow{ box-shadow: 0 0 0 1px rgba(240,169,60,0.25), 0 0 24px -6px rgba(240,169,60,0.35); }
+
+  ::selection{ background:var(--amber); color:#141414; }
+
+  /* scrollbar */
+  ::-webkit-scrollbar{ width:8px; height:8px; }
+  ::-webkit-scrollbar-track{ background:var(--bg); }
+  ::-webkit-scrollbar-thumb{ background:var(--border); border-radius:4px; }
+
+  /* ===== Latin square grid ===== */
+  .lsq-table{ border-collapse:separate; border-spacing:6px; }
+  .lsq-cell{
+    width:64px; height:64px;
+    display:flex; align-items:center; justify-content:center;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:1.5rem; font-weight:600;
+    border-radius:10px;
+    background:var(--bg-grid);
+    border:1px solid var(--border-soft);
+    color:var(--text);
+    transition: background .25s ease, border-color .25s ease, transform .2s ease, box-shadow .25s ease;
+    position:relative;
+  }
+  @media (min-width:640px){ .lsq-cell{ width:76px; height:76px; font-size:1.75rem; } }
+
+  .lsq-cell.hidden-cell{
+    color: var(--text-dim);
+    background: repeating-linear-gradient(135deg, #10141B, #10141B 6px, #0D1117 6px, #0D1117 12px);
+    border-color: var(--border-soft);
+  }
+
+  .lsq-cell.target-cell{
+    border: 1.5px solid var(--amber);
+    background: rgba(240,169,60,0.06);
+    box-shadow: 0 0 0 4px rgba(240,169,60,0.08);
+  }
+  .lsq-cell.target-cell::before{
+    content:"";
+    position:absolute; inset:-7px;
+    border-radius:14px;
+    border: 1px dashed rgba(240,169,60,0.55);
+    animation: reticle-pulse 1.8s ease-in-out infinite;
+  }
+  @keyframes reticle-pulse{
+    0%,100%{ opacity:.35; transform:scale(1); }
+    50%{ opacity:.9; transform:scale(1.035); }
+  }
+
+  .lsq-cell.correct-cell{
+    background: rgba(45,217,196,0.14);
+    border-color: var(--teal);
+    color: var(--teal);
+    box-shadow: 0 0 0 4px rgba(45,217,196,0.10);
+  }
+  .lsq-cell.incorrect-cell{
+    background: rgba(239,91,78,0.14);
+    border-color: var(--red);
+    color: var(--red);
+    box-shadow: 0 0 0 4px rgba(239,91,78,0.10);
+  }
+  .lsq-cell.reveal-pop{ animation: pop-in .35s ease; }
+  @keyframes pop-in{ 0%{ transform:scale(.7); opacity:0; } 100%{ transform:scale(1); opacity:1; } }
+
+  .lsq-coord{
+    font-family:'IBM Plex Mono',monospace;
+    color: var(--text-dim);
+    font-size: 0.65rem;
+  }
+
+  /* answer buttons */
+  .answer-btn{
+    font-family:'IBM Plex Mono',monospace;
+    transition: transform .12s ease, background .15s ease, border-color .15s ease;
+  }
+  .answer-btn:active{ transform: scale(0.94); }
+  .answer-btn:focus-visible, button:focus-visible, [tabindex]:focus-visible{
+    outline: 2px solid var(--amber); outline-offset: 2px;
+  }
+
+  .kbd{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:.65rem;
+    color: var(--text-dim);
+    border:1px solid var(--border);
+    border-radius:4px;
+    padding:0 4px;
+    background: var(--bg-grid);
+  }
+
+  .tab-btn.active{
+    color: var(--bg);
+    background: var(--amber);
+  }
+
+  .stat-chip{ background:var(--bg-grid); border:1px solid var(--border-soft); }
+
+  .progress-track{ background: var(--bg-grid); border:1px solid var(--border-soft); }
+  .progress-fill{ background: linear-gradient(90deg, var(--amber-dim), var(--amber)); transition: width .3s ease; }
+
+  .modal-backdrop{ background: rgba(6,8,11,0.72); backdrop-filter: blur(3px); }
+
+  .star-on{ color: var(--amber); }
+  .star-off{ color: var(--border); }
+
+  .walkthrough-step{
+    opacity:0; transform: translateY(6px);
+    animation: step-in .4s ease forwards;
+  }
+  @keyframes step-in{ to{ opacity:1; transform:translateY(0); } }
+
+  .blink-caret::after{
+    content:"█"; margin-left:2px; color:var(--amber);
+    animation: blink 1s step-start infinite;
+  }
+  @keyframes blink{ 50%{ opacity:0; } }
+
+  .fade-in{ animation: fadein .3s ease; }
+  @keyframes fadein{ from{opacity:0;} to{opacity:1;} }
+
+  input[type="range"]{ accent-color: var(--amber); }
+
+  .light-mode{
+    --bg: #F3F1EA;
+    --bg-grid: #FFFFFF;
+    --panel: #FBFAF6;
+    --panel-raised: #FFFFFF;
+    --border: #D8D3C6;
+    --border-soft: #E5E1D6;
+    --text: #1B1E24;
+    --text-muted: #5B5F6B;
+    --text-dim: #9A9A93;
+  }
+
+  .reduce-motion *{ animation-duration: 0.001s !important; transition-duration: 0.001s !important; }
+</style>
+</head>
+<body class="bg-console min-h-screen">
+
+<div id="app" class="min-h-screen flex flex-col">
+
+  <!-- ============ HEADER ============ -->
+  <header class="border-b border-[var(--border)] panel sticky top-0 z-30">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-lg amber-glow flex items-center justify-center font-display font-bold text-[var(--amber)] border border-[var(--amber-dim)]" style="background:var(--bg-grid)">Δ</div>
+        <div>
+          <h1 class="font-display font-semibold text-sm sm:text-base leading-tight tracking-wide">dMAT CORE MODULE</h1>
+          <p class="text-[10px] sm:text-xs text-[var(--text-dim)] font-mono tracking-widest">LATIN SQUARE · ASSESSMENT TRAINER</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="soundToggleBtn" aria-label="Toggle sound" class="w-9 h-9 rounded-lg panel-raised flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--amber)] hover:border-[var(--amber-dim)] transition">
+          <svg id="soundOnIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+          <svg id="soundOffIcon" class="hidden" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
+        </button>
+        <button id="themeToggleBtn" aria-label="Toggle light and dark mode" class="w-9 h-9 rounded-lg panel-raised flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--amber)] hover:border-[var(--amber-dim)] transition">
+          <svg id="moonIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <svg id="sunIcon" class="hidden" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============ NO-PAPER BANNER ============ -->
+  <div class="border-b border-[var(--amber-dim)]" style="background:linear-gradient(90deg, rgba(240,169,60,0.10), rgba(240,169,60,0.03));">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-2 flex items-center justify-center gap-2 text-center">
+      <span class="text-[var(--amber)] font-mono text-xs sm:text-sm tracking-widest">⚠ NO PAPER ALLOWED — TRAIN 100% MENTAL SOLVING</span>
+    </div>
+  </div>
+
+  <!-- ============ MODE / DIFFICULTY BAR ============ -->
+  <div class="max-w-6xl mx-auto w-full px-4 sm:px-6 pt-5">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-1 panel-raised rounded-lg p-1">
+        <button data-mode="practice" class="tab-btn active px-3 py-1.5 rounded-md text-xs font-mono tracking-wide transition">PRACTICE</button>
+        <button data-mode="simulation" class="tab-btn px-3 py-1.5 rounded-md text-xs font-mono tracking-wide transition text-[var(--text-muted)]">dMAT SIMULATION</button>
+      </div>
+      <div class="flex items-center gap-1 panel-raised rounded-lg p-1" id="difficultyBar">
+        <button data-diff="easy" class="diff-btn active px-3 py-1.5 rounded-md text-xs font-mono tracking-wide transition">EASY</button>
+        <button data-diff="medium" class="diff-btn px-3 py-1.5 rounded-md text-xs font-mono tracking-wide transition text-[var(--text-muted)]">MEDIUM</button>
+        <button data-diff="hard" class="diff-btn px-3 py-1.5 rounded-md text-xs font-mono tracking-wide transition text-[var(--text-muted)]">HARD</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MAIN LAYOUT ============ -->
+  <main class="flex-1 max-w-6xl mx-auto w-full px-4 sm:px-6 py-6 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
+
+    <!-- ---------- LEFT: PUZZLE AREA ---------- -->
+    <section class="flex flex-col gap-4">
+
+      <!-- session status row -->
+      <div class="panel rounded-xl px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-4 font-mono text-xs text-[var(--text-muted)]">
+          <span id="questionCounter">Question #1</span>
+          <span id="simProgressLabel" class="hidden">Question 1 / 20</span>
+          <span class="hidden sm:inline">·</span>
+          <span id="seedDisplay" class="hidden sm:inline">Seed: #000000</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <div id="simTimerWrap" class="hidden items-center gap-1.5 font-mono text-sm text-[var(--amber)]">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <span id="simTimer">25:00</span>
+          </div>
+          <button id="copySeedBtn" class="text-[10px] font-mono text-[var(--text-dim)] hover:text-[var(--amber)] transition hidden sm:inline">COPY SEED</button>
+        </div>
+      </div>
+
+      <!-- simulation progress bar -->
+      <div id="simProgressBarWrap" class="hidden h-1.5 rounded-full progress-track overflow-hidden">
+        <div id="simProgressBar" class="h-full progress-fill" style="width:0%"></div>
+      </div>
+
+      <!-- puzzle card -->
+      <div class="panel rounded-xl p-4 sm:p-6 flex flex-col items-center gap-5">
+        <div class="w-full flex items-center justify-between">
+          <span class="font-mono text-[10px] tracking-widest text-[var(--text-dim)]">GRID REFERENCE — SOLVE FOR 🟥</span>
+          <span id="difficultyPill" class="font-mono text-[10px] tracking-widest px-2 py-1 rounded panel-raised text-[var(--amber)] border border-[var(--amber-dim)]">EASY</span>
+        </div>
+
+        <div class="overflow-x-auto max-w-full">
+          <table class="lsq-table" id="lsqTable" role="grid" aria-label="5 by 5 Latin square puzzle grid"></table>
+        </div>
+
+        <div id="feedbackBanner" class="hidden w-full text-center rounded-lg py-2 font-mono text-sm fade-in"></div>
+
+        <!-- answer controls -->
+        <div class="grid grid-cols-5 gap-2 sm:gap-3 w-full max-w-md" id="answerButtons" role="group" aria-label="Answer choices">
+          <!-- injected -->
+        </div>
+
+        <div class="flex items-center gap-4 text-[10px] font-mono text-[var(--text-dim)]">
+          <span><span class="kbd">A</span>–<span class="kbd">E</span> answer</span>
+          <span><span class="kbd">Space</span> / <span class="kbd">Enter</span> next</span>
+        </div>
+
+        <div class="flex items-center gap-3 w-full justify-center pt-1">
+          <button id="walkthroughBtn" class="px-4 py-2 rounded-lg panel-raised border border-[var(--border)] text-xs font-mono tracking-wide text-[var(--text-muted)] hover:text-[var(--amber)] hover:border-[var(--amber-dim)] transition disabled:opacity-40 disabled:pointer-events-none">
+            SHOW MENTAL WALKTHROUGH
+          </button>
+          <button id="nextBtn" class="hidden px-5 py-2 rounded-lg bg-[var(--amber)] text-[#161208] text-xs font-mono font-semibold tracking-wide hover:brightness-110 transition">
+            NEXT QUESTION →
+          </button>
+        </div>
+      </div>
+
+      <!-- walkthrough panel -->
+      <div id="walkthroughPanel" class="hidden panel rounded-xl p-4 sm:p-5">
+        <div class="flex items-center justify-between mb-3">
+          <span class="font-mono text-[10px] tracking-widest text-[var(--amber)]">MENTAL WALKTHROUGH</span>
+          <button id="closeWalkthroughBtn" class="text-[var(--text-dim)] hover:text-[var(--text)] text-xs font-mono">CLOSE ✕</button>
+        </div>
+        <ol id="walkthroughSteps" class="space-y-2"></ol>
+      </div>
+    </section>
+
+    <!-- ---------- RIGHT: DASHBOARD ---------- -->
+    <aside class="flex flex-col gap-4">
+
+      <div class="panel rounded-xl p-4">
+        <h2 class="font-display text-xs tracking-widest text-[var(--text-dim)] mb-3">PERFORMANCE DASHBOARD</h2>
+        <div class="grid grid-cols-2 gap-2" id="dashboardStats">
+          <!-- injected stat chips -->
+        </div>
+      </div>
+
+      <div class="panel rounded-xl p-4">
+        <h2 class="font-display text-xs tracking-widest text-[var(--text-dim)] mb-3">DIFFICULTY ANALYTICS</h2>
+        <div class="space-y-3" id="difficultyAnalytics"><!-- injected --></div>
+      </div>
+
+      <div class="panel rounded-xl p-4">
+        <h2 class="font-display text-xs tracking-widest text-[var(--text-dim)] mb-3">SPEED TARGET</h2>
+        <div class="space-y-1.5 text-[11px] font-mono">
+          <div class="flex justify-between"><span class="text-[var(--teal)]">&lt; 20s</span><span class="text-[var(--text-muted)]">Excellent</span></div>
+          <div class="flex justify-between"><span class="text-[var(--blue)]">20–45s</span><span class="text-[var(--text-muted)]">Good</span></div>
+          <div class="flex justify-between"><span class="text-[var(--amber)]">45–75s</span><span class="text-[var(--text-muted)]">Acceptable</span></div>
+          <div class="flex justify-between"><span class="text-[var(--red)]">&gt; 75s</span><span class="text-[var(--text-muted)]">Needs Improvement</span></div>
+        </div>
+      </div>
+
+      <button id="resetStatsBtn" class="panel rounded-xl p-3 text-xs font-mono text-[var(--text-dim)] hover:text-[var(--red)] hover:border-[var(--red)] border border-transparent transition">
+        RESET STATISTICS
+      </button>
+    </aside>
+  </main>
+
+  <footer class="border-t border-[var(--border)] py-4">
+    <p class="text-center text-[10px] font-mono text-[var(--text-dim)] tracking-widest">dMAT LATIN SQUARE TRAINER · LOCAL SESSION ONLY · NO DATA LEAVES THIS DEVICE</p>
+  </footer>
+</div>
+
+<!-- ============ SIMULATION START MODAL ============ -->
+<div id="simStartModal" class="hidden fixed inset-0 z-50 modal-backdrop flex items-center justify-center p-4">
+  <div class="panel rounded-xl p-6 max-w-sm w-full amber-glow">
+    <h3 class="font-display font-semibold text-lg mb-1">dMAT Simulation Mode</h3>
+    <p class="text-sm text-[var(--text-muted)] mb-4">20 randomly generated questions · 25:00 countdown · auto-advance on timeout.</p>
+    <div class="space-y-2 text-xs font-mono text-[var(--text-dim)] mb-5">
+      <div class="flex justify-between"><span>Questions</span><span class="text-[var(--text)]">20</span></div>
+      <div class="flex justify-between"><span>Time limit</span><span class="text-[var(--text)]">25:00</span></div>
+      <div class="flex justify-between"><span>Difficulty mix</span><span class="text-[var(--text)]">Selected tier</span></div>
+    </div>
+    <div class="flex gap-2">
+      <button id="cancelSimBtn" class="flex-1 px-4 py-2 rounded-lg panel-raised border border-[var(--border)] text-xs font-mono text-[var(--text-muted)]">CANCEL</button>
+      <button id="startSimBtn" class="flex-1 px-4 py-2 rounded-lg bg-[var(--amber)] text-[#161208] text-xs font-mono font-semibold">BEGIN SIMULATION</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SESSION REPORT MODAL ============ -->
+<div id="reportModal" class="hidden fixed inset-0 z-50 modal-backdrop flex items-center justify-center p-4 overflow-y-auto">
+  <div class="panel rounded-xl p-6 max-w-md w-full my-8 amber-glow">
+    <h3 class="font-display font-semibold text-lg mb-4">Session Report</h3>
+    <div class="space-y-1.5 text-xs font-mono mb-4" id="reportBody"><!-- injected --></div>
+    <div class="mb-4">
+      <p class="text-[10px] tracking-widest text-[var(--text-dim)] mb-1">ESTIMATED dMAT READINESS</p>
+      <div id="reportStars" class="text-xl"></div>
+    </div>
+    <button id="closeReportBtn" class="w-full px-4 py-2 rounded-lg bg-[var(--amber)] text-[#161208] text-xs font-mono font-semibold">RETURN TO PRACTICE</button>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* =========================================================================
+   SECTION 1 — PUZZLE ENGINE
+   Handles procedural Latin square generation, the internal logical solver
+   used to validate/classify difficulty (never shown to the player), and
+   the human-readable "mental walkthrough" step builder.
+   ========================================================================= */
+const PuzzleEngine = (function(){
+  const SYMBOLS = ['A','B','C','D','E'];
+
+  function shuffle(arr){
+    const a = arr.slice();
+    for(let i=a.length-1;i>0;i--){
+      const j = Math.floor(Math.random()*(i+1));
+      [a[i],a[j]] = [a[j],a[i]];
+    }
+    return a;
+  }
+
+  // Generate a random, fully valid, filled 5x5 Latin square using a cyclic
+  // base square plus independent row / column / symbol permutations so the
+  // output space is not limited to a single canonical layout.
+  function generateLatinSquare(){
+    const base = shuffle(SYMBOLS);
+    let grid = [];
+    for(let r=0;r<5;r++){
+      const row = [];
+      for(let c=0;c<5;c++) row.push(base[(c+r)%5]);
+      grid.push(row);
+    }
+    const rowOrder = shuffle([0,1,2,3,4]);
+    grid = rowOrder.map(i=>grid[i]);
+    const colOrder = shuffle([0,1,2,3,4]);
+    grid = grid.map(row=>colOrder.map(c=>row[c]));
+    const relabel = {};
+    const shuffledSymbols = shuffle(SYMBOLS);
+    SYMBOLS.forEach((s,i)=>{ relabel[s]=shuffledSymbols[i]; });
+    grid = grid.map(row=>row.map(s=>relabel[s]));
+    return grid;
+  }
+
+  // Confirms every row and column contains all five symbols exactly once.
+  function isValidLatinSquare(grid){
+    for(let i=0;i<5;i++){
+      if(new Set(grid[i]).size!==5) return false;
+      if(new Set(grid.map(r=>r[i])).size!==5) return false;
+    }
+    return true;
+  }
+
+  function rowMissing(grid, hiddenMask, r, excludeCol){
+    const present = new Set();
+    for(let c=0;c<5;c++){
+      if(c===excludeCol) continue;
+      if(!hiddenMask[r][c]) present.add(grid[r][c]);
+    }
+    return SYMBOLS.filter(s=>!present.has(s));
+  }
+
+  function colMissing(grid, hiddenMask, c, excludeRow){
+    const present = new Set();
+    for(let r=0;r<5;r++){
+      if(r===excludeRow) continue;
+      if(!hiddenMask[r][c]) present.add(grid[r][c]);
+    }
+    return SYMBOLS.filter(s=>!present.has(s));
+  }
+
+  function intersect(a,b){
+    const bs = new Set(b);
+    return a.filter(x=>bs.has(x));
+  }
+
+  // The internal logical solver: repeatedly fills any hidden cell whose
+  // row-missing ∩ column-missing candidate set has exactly one member
+  // ("naked single" elimination). This never guesses — if it stalls before
+  // the target is resolved, the puzzle is rejected as ambiguous.
+  function propagationSolve(grid, hiddenMaskInput, target){
+    const hiddenMask = hiddenMaskInput.map(row=>row.slice());
+    const known = grid.map((row,r)=>row.map((v,c)=>(hiddenMask[r][c]?null:v)));
+    const solvedOrder = [];
+    let targetSolvedAtStep = -1;
+    let progress = true;
+    let steps = 0;
+
+    while(progress){
+      progress = false;
+      for(let r=0;r<5;r++){
+        for(let c=0;c<5;c++){
+          if(known[r][c]!==null) continue;
+          const rm = SYMBOLS.filter(s=>!known[r].includes(s));
+          const cm = SYMBOLS.filter(s=>!known.map(row=>row[c]).includes(s));
+          const candidates = intersect(rm,cm);
+          if(candidates.length===1){
+            known[r][c] = candidates[0];
+            steps++;
+            solvedOrder.push({r,c,value:candidates[0],step:steps,rowMissing:rm,colMissing:cm});
+            if(r===target.r && c===target.c) targetSolvedAtStep = steps;
+            progress = true;
+          }
+        }
+      }
+    }
+    const stuck = known[target.r][target.c]===null;
+    return { solvedOrder, targetSolvedAtStep, stuck, known };
+  }
+
+  // Classifies the reasoning depth required to solve the target cell:
+  //   easy   — row alone or column alone gives a single candidate
+  //   medium — row ∩ column intersection gives a single candidate
+  //   hard   — requires solving other hidden cells first (chained deduction)
+  //   invalid — solver stalls (would require guessing) -> discard puzzle
+  function classifyDifficulty(grid, hiddenMask, target){
+    const {r,c} = target;
+    const rm = rowMissing(grid, hiddenMask, r, c);
+    const cm = colMissing(grid, hiddenMask, c, r);
+
+    if(rm.length===1) return { difficulty:'easy', reason:'row', steps:1 };
+    if(cm.length===1) return { difficulty:'easy', reason:'column', steps:1 };
+
+    const inter = intersect(rm,cm);
+    if(inter.length===1) return { difficulty:'medium', reason:'intersection', steps:2 };
+
+    const result = propagationSolve(grid, hiddenMask, target);
+    if(result.stuck || result.targetSolvedAtStep===-1){
+      return { difficulty:'invalid', reason:'unsolvable-without-guessing' };
+    }
+    const priorDeductions = result.solvedOrder.filter(s=>s.step<result.targetSolvedAtStep).length;
+    if(priorDeductions<1) return { difficulty:'medium', reason:'intersection', steps:2 };
+    return { difficulty:'hard', reason:'chain', steps:priorDeductions+1, chainDeductions:priorDeductions };
+  }
+
+  // Procedurally generates puzzles until one matches the requested
+  // difficulty exactly (rejection sampling), discarding every ambiguous
+  // or wrongly-classified candidate along the way.
+  function generatePuzzle(requestedDifficulty, maxAttempts){
+    maxAttempts = maxAttempts || 400;
+    const hideCountRange = { easy:[3,5], medium:[6,10], hard:[9,14] }[requestedDifficulty];
+    let fallback = null;
+
+    for(let attempt=0; attempt<maxAttempts; attempt++){
+      const grid = generateLatinSquare();
+      if(!isValidLatinSquare(grid)) continue;
+
+      const target = { r:Math.floor(Math.random()*5), c:Math.floor(Math.random()*5) };
+      const hideCount = hideCountRange[0] + Math.floor(Math.random()*(hideCountRange[1]-hideCountRange[0]+1));
+
+      const allCells = [];
+      for(let r=0;r<5;r++) for(let c=0;c<5;c++) if(!(r===target.r && c===target.c)) allCells.push({r,c});
+      const others = shuffle(allCells).slice(0, Math.max(0, hideCount-1));
+
+      const hiddenMask = Array.from({length:5}, ()=>Array(5).fill(false));
+      hiddenMask[target.r][target.c] = true;
+      others.forEach(({r,c})=>{ hiddenMask[r][c]=true; });
+
+      const result = classifyDifficulty(grid, hiddenMask, target);
+      if(result.difficulty===requestedDifficulty){
+        const puzzle = { grid, hiddenMask, target, meta:result, seed:Math.floor(Math.random()*900000)+100000 };
+        if(requestedDifficulty!=='hard') return puzzle;
+        const chain = result.chainDeductions||0;
+        if(chain>=3 && chain<=6) return puzzle;
+        if(!fallback) fallback = puzzle;
+      }
+    }
+    return fallback;
+  }
+
+  // Regenerates the exact same puzzle from a stored seed + RNG snapshot is
+  // not cryptographically reproducible with Math.random, so "replay seed"
+  // re-runs the generator with the seed recorded purely as a session label
+  // for sharing/debugging, and re-derives an equivalent puzzle at the same
+  // difficulty on demand.
+  function generateWalkthrough(grid, hiddenMask, target, meta){
+    const {r,c} = target;
+    const steps = [];
+    const answer = grid[r][c];
+
+    if(meta.difficulty==='easy'){
+      if(meta.reason==='row'){
+        const rm = rowMissing(grid, hiddenMask, r, c);
+        steps.push({label:`Row ${r+1}`, detail:`Missing letter: {${rm.join(', ')}}`});
+      } else {
+        const cm = colMissing(grid, hiddenMask, c, r);
+        steps.push({label:`Column ${c+1}`, detail:`Missing letter: {${cm.join(', ')}}`});
+      }
+      steps.push({label:'Therefore', detail:`Answer = ${answer}`});
+      return steps;
+    }
+
+    if(meta.difficulty==='medium'){
+      const rm = rowMissing(grid, hiddenMask, r, c);
+      const cm = colMissing(grid, hiddenMask, c, r);
+      steps.push({label:`Row ${r+1}`, detail:`Missing letters: {${rm.join(', ')}}`});
+      steps.push({label:`Column ${c+1}`, detail:`Missing letters: {${cm.join(', ')}}`});
+      steps.push({label:'Intersection', detail:`Common candidate: {${intersect(rm,cm).join(', ')}}`});
+      steps.push({label:'Therefore', detail:`Answer = ${answer}`});
+      return steps;
+    }
+
+    if(meta.difficulty==='hard'){
+      const result = propagationSolve(grid, hiddenMask, target);
+      const relevant = result.solvedOrder.filter(s=>s.step<=result.targetSolvedAtStep);
+      relevant.forEach((s,idx)=>{
+        const isTarget = s.r===r && s.c===c;
+        steps.push({
+          label: isTarget ? `Final deduction — Row ${s.r+1}, Col ${s.c+1}` : `Deduction ${idx+1} — Row ${s.r+1}, Col ${s.c+1}`,
+          detail: `Row ${s.r+1} missing {${s.rowMissing.join(', ')}} ∩ Column ${s.c+1} missing {${s.colMissing.join(', ')}} → ${s.value}`
+        });
+      });
+      steps.push({label:'Therefore', detail:`Answer = ${answer}`});
+      return steps;
+    }
+    return steps;
+  }
+
+  return { SYMBOLS, generateLatinSquare, isValidLatinSquare, classifyDifficulty, generatePuzzle, generateWalkthrough };
+})();
+
+
+/* =========================================================================
+   SECTION 2 — SOUND MANAGER
+   Lightweight WebAudio synth beeps (no external audio files needed).
+   ========================================================================= */
+const SoundManager = (function(){
+  let ctx = null;
+  let muted = false;
+
+  function ensureCtx(){
+    if(!ctx){
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if(AC) ctx = new AC();
+    }
+    return ctx;
+  }
+
+  function beep(freq, duration, type, gainPeak){
+    if(muted) return;
+    const c = ensureCtx();
+    if(!c) return;
+    const osc = c.createOscillator();
+    const gain = c.createGain();
+    osc.type = type || 'sine';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0, c.currentTime);
+    gain.gain.linearRampToValueAtTime(gainPeak||0.12, c.currentTime+0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, c.currentTime+duration);
+    osc.connect(gain).connect(c.destination);
+    osc.start();
+    osc.stop(c.currentTime+duration);
+  }
+
+  return {
+    setMuted(v){ muted = v; },
+    isMuted(){ return muted; },
+    correct(){ beep(880,0.12,'sine',0.14); setTimeout(()=>beep(1180,0.16,'sine',0.12),90); },
+    incorrect(){ beep(180,0.28,'sawtooth',0.10); },
+    newQuestion(){ beep(520,0.08,'triangle',0.08); },
+  };
+})();
+
+
+/* =========================================================================
+   SECTION 3 — STATISTICS / LOCAL STORAGE MANAGER
+   Persists accuracy, history, streaks, per-difficulty stats, simulation
+   results and preferences to localStorage and restores them on load.
+   ========================================================================= */
+const StatsManager = (function(){
+  const KEY = 'dmat_lsq_stats_v1';
+
+  function defaultStats(){
+    return {
+      totalSolved: 0,
+      correct: 0,
+      incorrect: 0,
+      totalTimeMs: 0,
+      currentStreak: 0,
+      bestStreak: 0,
+      questionCounter: 0,
+      byDifficulty: {
+        easy:   { solved:0, correct:0, totalTimeMs:0 },
+        medium: { solved:0, correct:0, totalTimeMs:0 },
+        hard:   { solved:0, correct:0, totalTimeMs:0 },
+      },
+      simulationResults: [],
+      preferences: { mode:'practice', difficulty:'easy', theme:'dark', muted:false },
+    };
+  }
+
+  let state = load();
+
+  function load(){
+    try{
+      const raw = localStorage.getItem(KEY);
+      if(!raw) return defaultStats();
+      const parsed = JSON.parse(raw);
+      // merge with defaults to survive schema additions
+      const d = defaultStats();
+      return Object.assign(d, parsed, {
+        byDifficulty: Object.assign(d.byDifficulty, parsed.byDifficulty||{}),
+        preferences: Object.assign(d.preferences, parsed.preferences||{}),
+      });
+    }catch(e){
+      console.warn('Stats load failed, using defaults.', e);
+      return defaultStats();
+    }
+  }
+
+  function save(){
+    try{ localStorage.setItem(KEY, JSON.stringify(state)); }
+    catch(e){ console.warn('Stats save failed.', e); }
+  }
+
+  function recordAnswer(difficulty, isCorrect, timeMs){
+    state.totalSolved++;
+    state.questionCounter++;
+    if(isCorrect){
+      state.correct++;
+      state.currentStreak++;
+      state.bestStreak = Math.max(state.bestStreak, state.currentStreak);
+    } else {
+      state.incorrect++;
+      state.currentStreak = 0;
+    }
+    state.totalTimeMs += timeMs;
+
+    const d = state.byDifficulty[difficulty];
+    d.solved++;
+    if(isCorrect) d.correct++;
+    d.totalTimeMs += timeMs;
+
+    save();
+  }
+
+  function recordSimulation(report){
+    state.simulationResults.unshift(report);
+    state.simulationResults = state.simulationResults.slice(0,20);
+    save();
+  }
+
+  function setPreference(key, value){
+    state.preferences[key] = value;
+    save();
+  }
+
+  function reset(){
+    state = defaultStats();
+    save();
+  }
+
+  function get(){ return state; }
+
+  return { get, recordAnswer, recordSimulation, setPreference, reset };
+})();
+
+
+/* =========================================================================
+   SECTION 4 — UI CONTROLLER
+   Rendering, event wiring, keyboard handling, timers and the practice /
+   simulation game loops.
+   ========================================================================= */
+const UI = (function(){
+  const els = {
+    lsqTable: document.getElementById('lsqTable'),
+    answerButtons: document.getElementById('answerButtons'),
+    feedbackBanner: document.getElementById('feedbackBanner'),
+    nextBtn: document.getElementById('nextBtn'),
+    walkthroughBtn: document.getElementById('walkthroughBtn'),
+    walkthroughPanel: document.getElementById('walkthroughPanel'),
+    walkthroughSteps: document.getElementById('walkthroughSteps'),
+    closeWalkthroughBtn: document.getElementById('closeWalkthroughBtn'),
+    questionCounter: document.getElementById('questionCounter'),
+    simProgressLabel: document.getElementById('simProgressLabel'),
+    simProgressBarWrap: document.getElementById('simProgressBarWrap'),
+    simProgressBar: document.getElementById('simProgressBar'),
+    seedDisplay: document.getElementById('seedDisplay'),
+    copySeedBtn: document.getElementById('copySeedBtn'),
+    difficultyPill: document.getElementById('difficultyPill'),
+    difficultyBar: document.getElementById('difficultyBar'),
+    dashboardStats: document.getElementById('dashboardStats'),
+    difficultyAnalytics: document.getElementById('difficultyAnalytics'),
+    simTimerWrap: document.getElementById('simTimerWrap'),
+    simTimer: document.getElementById('simTimer'),
+    simStartModal: document.getElementById('simStartModal'),
+    startSimBtn: document.getElementById('startSimBtn'),
+    cancelSimBtn: document.getElementById('cancelSimBtn'),
+    reportModal: document.getElementById('reportModal'),
+    reportBody: document.getElementById('reportBody'),
+    reportStars: document.getElementById('reportStars'),
+    closeReportBtn: document.getElementById('closeReportBtn'),
+    resetStatsBtn: document.getElementById('resetStatsBtn'),
+    soundToggleBtn: document.getElementById('soundToggleBtn'),
+    soundOnIcon: document.getElementById('soundOnIcon'),
+    soundOffIcon: document.getElementById('soundOffIcon'),
+    themeToggleBtn: document.getElementById('themeToggleBtn'),
+    moonIcon: document.getElementById('moonIcon'),
+    sunIcon: document.getElementById('sunIcon'),
+  };
+
+  const state = {
+    mode: 'practice',           // 'practice' | 'simulation'
+    difficulty: 'easy',
+    puzzle: null,
+    answered: false,
+    questionStartTime: 0,
+    walkthroughOpen: false,
+    // simulation-only:
+    simActive: false,
+    simIndex: 0,
+    simTotal: 20,
+    simTimeLeftSec: 25*60,
+    simTimerHandle: null,
+    simResults: [], // {difficulty, correct, timeMs}
+  };
+
+  /* ---------------- Rendering: puzzle grid ---------------- */
+  function renderGrid(puzzle, revealState){
+    // revealState: null (in-progress) | 'correct' | 'incorrect'
+    const { grid, hiddenMask, target } = puzzle;
+    els.lsqTable.innerHTML = '';
+    for(let r=0;r<5;r++){
+      const tr = document.createElement('tr');
+      for(let c=0;c<5;c++){
+        const td = document.createElement('td');
+        const isTarget = (r===target.r && c===target.c);
+        const isHidden = hiddenMask[r][c];
+        const cellDiv = document.createElement('div');
+        cellDiv.className = 'lsq-cell';
+        cellDiv.setAttribute('role','gridcell');
+
+        if(isTarget){
+          if(revealState==='correct'){
+            cellDiv.classList.add('correct-cell','reveal-pop');
+            cellDiv.textContent = grid[r][c];
+            cellDiv.setAttribute('aria-label', `Target cell, row ${r+1} column ${c+1}: correct answer ${grid[r][c]}`);
+          } else if(revealState==='incorrect'){
+            cellDiv.classList.add('incorrect-cell','reveal-pop');
+            cellDiv.textContent = grid[r][c];
+            cellDiv.setAttribute('aria-label', `Target cell, row ${r+1} column ${c+1}: correct answer was ${grid[r][c]}`);
+          } else {
+            cellDiv.classList.add('target-cell');
+            cellDiv.textContent = '🟥';
+            cellDiv.setAttribute('aria-label', `Target cell, row ${r+1} column ${c+1}: unknown, solve for this cell`);
+          }
+        } else if(isHidden){
+          cellDiv.classList.add('hidden-cell');
+          cellDiv.textContent = '⬜';
+          cellDiv.setAttribute('aria-label', `Hidden cell, row ${r+1} column ${c+1}`);
+        } else {
+          cellDiv.textContent = grid[r][c];
+          cellDiv.setAttribute('aria-label', `Row ${r+1} column ${c+1}: ${grid[r][c]}`);
+        }
+        td.appendChild(cellDiv);
+        tr.appendChild(td);
+      }
+      els.lsqTable.appendChild(tr);
+    }
+  }
+
+  /* ---------------- Rendering: answer buttons ---------------- */
+  function renderAnswerButtons(){
+    els.answerButtons.innerHTML = '';
+    PuzzleEngine.SYMBOLS.forEach(sym=>{
+      const btn = document.createElement('button');
+      btn.className = 'answer-btn py-3 rounded-lg panel-raised border border-[var(--border)] text-lg font-semibold hover:border-[var(--amber)] hover:text-[var(--amber)] transition';
+      btn.textContent = sym;
+      btn.dataset.symbol = sym;
+      btn.setAttribute('aria-label', `Answer ${sym}`);
+      btn.addEventListener('click', ()=> submitAnswer(sym));
+      els.answerButtons.appendChild(btn);
+    });
+  }
+
+  /* ---------------- Dashboard rendering ---------------- */
+  function formatTime(ms){
+    if(!ms || ms<=0) return '0.0s';
+    return (ms/1000).toFixed(1)+'s';
+  }
+
+  function speedColor(avgMs){
+    if(!avgMs) return 'var(--text-dim)';
+    const s = avgMs/1000;
+    if(s<20) return 'var(--teal)';
+    if(s<45) return 'var(--blue)';
+    if(s<75) return 'var(--amber)';
+    return 'var(--red)';
+  }
+
+  function renderDashboard(){
+    const s = StatsManager.get();
+    const accuracy = s.totalSolved ? ((s.correct/s.totalSolved)*100).toFixed(1) : '0.0';
+    const avgTime = s.totalSolved ? s.totalTimeMs/s.totalSolved : 0;
+
+    const chips = [
+      ['Total Solved', s.totalSolved],
+      ['Correct', s.correct],
+      ['Incorrect', s.incorrect],
+      ['Accuracy', accuracy+'%'],
+      ['Avg Time', formatTime(avgTime)],
+      ['Current Streak', s.currentStreak],
+      ['Best Streak', s.bestStreak],
+      ['Mode', state.mode==='simulation' ? 'Simulation' : 'Practice'],
+    ];
+
+    els.dashboardStats.innerHTML = '';
+    chips.forEach(([label,val])=>{
+      const div = document.createElement('div');
+      div.className = 'stat-chip rounded-lg px-3 py-2';
+      div.innerHTML = `<div class="text-[9px] font-mono tracking-widest text-[var(--text-dim)] mb-0.5">${label.toUpperCase()}</div><div class="font-mono text-sm font-semibold">${val}</div>`;
+      els.dashboardStats.appendChild(div);
+    });
+
+    els.difficultyAnalytics.innerHTML = '';
+    ['easy','medium','hard'].forEach(diff=>{
+      const d = s.byDifficulty[diff];
+      const acc = d.solved ? ((d.correct/d.solved)*100).toFixed(0) : 0;
+      const avg = d.solved ? d.totalTimeMs/d.solved : 0;
+      const row = document.createElement('div');
+      row.innerHTML = `
+        <div class="flex items-center justify-between text-[11px] font-mono mb-1">
+          <span class="uppercase tracking-wide text-[var(--text-muted)]">${diff}</span>
+          <span style="color:${speedColor(avg)}">${d.solved ? formatTime(avg) : '—'}</span>
+        </div>
+        <div class="h-1.5 rounded-full progress-track overflow-hidden mb-1">
+          <div class="h-full progress-fill" style="width:${acc}%"></div>
+        </div>
+        <div class="flex justify-between text-[9px] font-mono text-[var(--text-dim)]">
+          <span>${d.solved} solved</span><span>${acc}% acc</span>
+        </div>`;
+      els.difficultyAnalytics.appendChild(row);
+    });
+  }
+
+  /* ---------------- Question counter / seed display ---------------- */
+  function renderCounters(){
+    const s = StatsManager.get();
+    if(state.mode==='simulation'){
+      els.questionCounter.classList.add('hidden');
+      els.simProgressLabel.classList.remove('hidden');
+      els.simProgressLabel.textContent = `Question ${state.simIndex+1} / ${state.simTotal}`;
+      els.simProgressBarWrap.classList.remove('hidden');
+      els.simProgressBar.style.width = `${(state.simIndex/state.simTotal)*100}%`;
+      els.simTimerWrap.classList.remove('hidden');
+      els.simTimerWrap.classList.add('flex');
+    } else {
+      els.questionCounter.classList.remove('hidden');
+      els.questionCounter.textContent = `Question #${s.questionCounter+1}`;
+      els.simProgressLabel.classList.add('hidden');
+      els.simProgressBarWrap.classList.add('hidden');
+      els.simTimerWrap.classList.add('hidden');
+      els.simTimerWrap.classList.remove('flex');
+    }
+    if(state.puzzle){
+      els.seedDisplay.textContent = `Seed: #${state.puzzle.seed}`;
+      els.seedDisplay.classList.remove('hidden');
+      els.copySeedBtn.classList.remove('hidden');
+    }
+    els.difficultyPill.textContent = state.difficulty.toUpperCase();
+  }
+
+  /* ---------------- Core game flow ---------------- */
+  function newQuestion(){
+    els.feedbackBanner.classList.add('hidden');
+    els.nextBtn.classList.add('hidden');
+    els.walkthroughBtn.disabled = false;
+    closeWalkthrough();
+    state.answered = false;
+
+    const puzzle = PuzzleEngine.generatePuzzle(state.difficulty, 500);
+    if(!puzzle){
+      // Extremely unlikely fallback: retry once more with larger attempt budget.
+      state.puzzle = PuzzleEngine.generatePuzzle(state.difficulty, 2000);
+    } else {
+      state.puzzle = puzzle;
+    }
+    state.questionStartTime = performance.now();
+
+    renderGrid(state.puzzle, null);
+    renderAnswerButtons();
+    setAnswerButtonsEnabled(true);
+    renderCounters();
+    SoundManager.newQuestion();
+  }
+
+  function setAnswerButtonsEnabled(enabled){
+    Array.from(els.answerButtons.children).forEach(btn=>{
+      btn.disabled = !enabled;
+      btn.classList.toggle('opacity-40', !enabled);
+      btn.classList.toggle('pointer-events-none', !enabled);
+    });
+  }
+
+  function submitAnswer(symbol){
+    if(state.answered || !state.puzzle) return;
+    state.answered = true;
+    setAnswerButtonsEnabled(false);
+
+    const { grid, target } = state.puzzle;
+    const correctAnswer = grid[target.r][target.c];
+    const isCorrect = symbol===correctAnswer;
+    const timeMs = performance.now()-state.questionStartTime;
+
+    renderGrid(state.puzzle, isCorrect?'correct':'incorrect');
+
+    els.feedbackBanner.classList.remove('hidden');
+    if(isCorrect){
+      els.feedbackBanner.textContent = `✔ Correct — ${correctAnswer}`;
+      els.feedbackBanner.style.color = 'var(--teal)';
+      els.feedbackBanner.style.background = 'rgba(45,217,196,0.08)';
+      SoundManager.correct();
+    } else {
+      els.feedbackBanner.textContent = `✘ Incorrect — correct answer was ${correctAnswer}`;
+      els.feedbackBanner.style.color = 'var(--red)';
+      els.feedbackBanner.style.background = 'rgba(239,91,78,0.08)';
+      SoundManager.incorrect();
+    }
+
+    StatsManager.recordAnswer(state.difficulty, isCorrect, timeMs);
+    renderDashboard();
+
+    if(state.mode==='simulation'){
+      state.simResults.push({ difficulty: state.difficulty, correct: isCorrect, timeMs });
+      els.nextBtn.textContent = state.simIndex+1>=state.simTotal ? 'FINISH SIMULATION →' : 'NEXT QUESTION →';
+    } else {
+      els.nextBtn.textContent = 'NEXT QUESTION →';
+    }
+    els.nextBtn.classList.remove('hidden');
+  }
+
+  function advance(){
+    if(state.mode==='simulation'){
+      state.simIndex++;
+      if(state.simIndex>=state.simTotal){
+        finishSimulation();
+        return;
+      }
+      newQuestion();
+    } else {
+      newQuestion();
+    }
+  }
+
+  /* ---------------- Walkthrough ---------------- */
+  function toggleWalkthrough(){
+    if(state.walkthroughOpen){ closeWalkthrough(); return; }
+    if(!state.puzzle) return;
+    const { grid, hiddenMask, target, meta } = state.puzzle;
+    const steps = PuzzleEngine.generateWalkthrough(grid, hiddenMask, target, meta);
+    els.walkthroughSteps.innerHTML = '';
+    steps.forEach((step, idx)=>{
+      const li = document.createElement('li');
+      li.className = 'walkthrough-step panel-raised rounded-lg px-3 py-2 flex items-start gap-3';
+      li.style.animationDelay = (idx*0.28)+'s';
+      li.innerHTML = `
+        <span class="font-mono text-[10px] text-[var(--amber)] mt-0.5">${String(idx+1).padStart(2,'0')}</span>
+        <div>
+          <div class="text-xs font-mono font-semibold text-[var(--text)]">${step.label}</div>
+          <div class="text-xs font-mono text-[var(--text-muted)]">${step.detail}</div>
+        </div>`;
+      els.walkthroughSteps.appendChild(li);
+    });
+    els.walkthroughPanel.classList.remove('hidden');
+    state.walkthroughOpen = true;
+  }
+  function closeWalkthrough(){
+    els.walkthroughPanel.classList.add('hidden');
+    state.walkthroughOpen = false;
+  }
+
+  /* ---------------- Simulation mode ---------------- */
+  function openSimStartModal(){ els.simStartModal.classList.remove('hidden'); els.simStartModal.classList.add('flex'); }
+  function closeSimStartModal(){ els.simStartModal.classList.add('hidden'); els.simStartModal.classList.remove('flex'); }
+
+  function startSimulation(){
+    closeSimStartModal();
+    state.mode = 'simulation';
+    state.simActive = true;
+    state.simIndex = 0;
+    state.simTimeLeftSec = 25*60;
+    state.simResults = [];
+    updateModeTabs();
+    tickSimTimerDisplay();
+    if(state.simTimerHandle) clearInterval(state.simTimerHandle);
+    state.simTimerHandle = setInterval(simTimerTick, 1000);
+    newQuestion();
+  }
+
+  function simTimerTick(){
+    state.simTimeLeftSec--;
+    tickSimTimerDisplay();
+    if(state.simTimeLeftSec<=0){
+      finishSimulation();
+    }
+  }
+
+  function tickSimTimerDisplay(){
+    const m = Math.max(0,Math.floor(state.simTimeLeftSec/60));
+    const s = Math.max(0,state.simTimeLeftSec%60);
+    els.simTimer.textContent = `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  }
+
+  function finishSimulation(){
+    if(state.simTimerHandle){ clearInterval(state.simTimerHandle); state.simTimerHandle=null; }
+    state.simActive = false;
+
+    const results = state.simResults;
+    const total = results.length;
+    const correctCount = results.filter(r=>r.correct).length;
+    const times = results.map(r=>r.timeMs);
+    const avgTime = times.length ? times.reduce((a,b)=>a+b,0)/times.length : 0;
+    const fastest = times.length ? Math.min(...times) : 0;
+    const slowest = times.length ? Math.max(...times) : 0;
+    let bestStreak = 0, cur = 0;
+    results.forEach(r=>{ if(r.correct){ cur++; bestStreak=Math.max(bestStreak,cur);} else cur=0; });
+
+    const byDiff = {};
+    ['easy','medium','hard'].forEach(d=>{
+      const subset = results.filter(r=>r.difficulty===d);
+      byDiff[d] = {
+        solved: subset.length,
+        correct: subset.filter(r=>r.correct).length,
+        avgTime: subset.length ? subset.reduce((a,b)=>a+b.timeMs,0)/subset.length : 0,
+      };
+    });
+
+    const accuracy = total ? (correctCount/total)*100 : 0;
+    // Readiness score blends accuracy and speed into a 1-5 star rating.
+    const speedScore = avgTime<=20000?5: avgTime<=45000?4: avgTime<=75000?3: avgTime<=100000?2:1;
+    const accScore = accuracy>=90?5: accuracy>=75?4: accuracy>=60?3: accuracy>=40?2:1;
+    const stars = Math.round((speedScore+accScore)/2);
+
+    const report = {
+      date: new Date().toISOString(),
+      total, correct: correctCount, incorrect: total-correctCount,
+      accuracy, avgTime, fastest, slowest, bestStreak, byDiff, stars,
+    };
+    StatsManager.recordSimulation(report);
+    renderDashboard();
+    showReport(report);
+
+    state.mode = 'practice';
+    updateModeTabs();
+  }
+
+  function showReport(report){
+    els.reportBody.innerHTML = `
+      <div class="flex justify-between"><span class="text-[var(--text-muted)]">Questions</span><span>${report.total}</span></div>
+      <div class="flex justify-between"><span class="text-[var(--text-muted)]">Correct</span><span class="text-[var(--teal)]">${report.correct}</span></div>
+      <div class="flex justify-between"><span class="text-[var(--text-muted)]">Incorrect</span><span class="text-[var(--red)]">${report.incorrect}</span></div>
+      <div class="flex justify-between"><span class="text-[var(--text-muted)]">Accuracy</span><span>${report.accuracy.toFixed(1)}%</span></div>
+      <div class="flex justify-between"><span class="text-[var(--text-muted)]">Average Time</span><span>${formatTime(report.avgTime)}</span></div>
+      <div class="flex justify-between"><span class="text-[var(--text-muted)]">Fastest Solve</span><span>${formatTime(report.fastest)}</span></div>
+      <div class="flex justify-between"><span class="text-[var(--text-muted)]">Slowest Solve</span><span>${formatTime(report.slowest)}</span></div>
+      <div class="flex justify-between"><span class="text-[var(--text-muted)]">Best Streak</span><span>${report.bestStreak}</span></div>
+      <div class="pt-2 border-t border-[var(--border-soft)] mt-2">
+        <div class="text-[10px] tracking-widest text-[var(--text-dim)] mb-1">DIFFICULTY BREAKDOWN</div>
+        ${['easy','medium','hard'].map(d=>{
+          const b = report.byDiff[d];
+          return `<div class="flex justify-between"><span class="uppercase text-[var(--text-muted)]">${d}</span><span>${b.solved ? `${b.correct}/${b.solved} · ${formatTime(b.avgTime)}` : '—'}</span></div>`;
+        }).join('')}
+      </div>
+    `;
+    els.reportStars.innerHTML = Array.from({length:5}).map((_,i)=> i<report.stars ? '<span class="star-on">★</span>' : '<span class="star-off">★</span>').join('');
+    els.reportModal.classList.remove('hidden');
+    els.reportModal.classList.add('flex');
+  }
+
+  function closeReport(){
+    els.reportModal.classList.add('hidden');
+    els.reportModal.classList.remove('flex');
+    newQuestion();
+  }
+
+  /* ---------------- Mode / difficulty tabs ---------------- */
+  function updateModeTabs(){
+    document.querySelectorAll('[data-mode]').forEach(btn=>{
+      const active = btn.dataset.mode===state.mode;
+      btn.classList.toggle('active', active);
+      btn.classList.toggle('text-[var(--text-muted)]', !active);
+    });
+  }
+  function updateDifficultyTabs(){
+    document.querySelectorAll('[data-diff]').forEach(btn=>{
+      const active = btn.dataset.diff===state.difficulty;
+      btn.classList.toggle('active', active);
+      btn.classList.toggle('text-[var(--text-muted)]', !active);
+    });
+  }
+
+  /* ---------------- Keyboard handling ---------------- */
+  function handleKeydown(e){
+    if(els.simStartModal.classList.contains('flex') || els.reportModal.classList.contains('flex')) return;
+    const key = e.key.toUpperCase();
+    if(['A','B','C','D','E'].includes(key)){
+      if(!state.answered) submitAnswer(key);
+      e.preventDefault();
+    } else if(e.key===' ' || e.key==='Enter'){
+      if(state.answered && !els.nextBtn.classList.contains('hidden')){
+        advance();
+      }
+      e.preventDefault();
+    }
+  }
+
+  /* ---------------- Sound / theme toggles ---------------- */
+  function refreshSoundIcon(){
+    const muted = SoundManager.isMuted();
+    els.soundOnIcon.classList.toggle('hidden', muted);
+    els.soundOffIcon.classList.toggle('hidden', !muted);
+  }
+  function toggleSound(){
+    const muted = !SoundManager.isMuted();
+    SoundManager.setMuted(muted);
+    StatsManager.setPreference('muted', muted);
+    refreshSoundIcon();
+  }
+
+  function refreshThemeIcon(){
+    const light = document.body.classList.contains('light-mode');
+    els.moonIcon.classList.toggle('hidden', light);
+    els.sunIcon.classList.toggle('hidden', !light);
+  }
+  function toggleTheme(){
+    document.body.classList.toggle('light-mode');
+    const light = document.body.classList.contains('light-mode');
+    StatsManager.setPreference('theme', light?'light':'dark');
+    refreshThemeIcon();
+  }
+
+  /* ---------------- Wiring ---------------- */
+  function wireEvents(){
+    document.querySelectorAll('[data-mode]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const mode = btn.dataset.mode;
+        if(mode==='simulation'){
+          openSimStartModal();
+        } else {
+          state.mode = 'practice';
+          updateModeTabs();
+          renderCounters();
+        }
+      });
+    });
+    document.querySelectorAll('[data-diff]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        state.difficulty = btn.dataset.diff;
+        StatsManager.setPreference('difficulty', state.difficulty);
+        updateDifficultyTabs();
+        if(!state.simActive) newQuestion();
+      });
+    });
+
+    els.nextBtn.addEventListener('click', advance);
+    els.walkthroughBtn.addEventListener('click', toggleWalkthrough);
+    els.closeWalkthroughBtn.addEventListener('click', closeWalkthrough);
+
+    els.startSimBtn.addEventListener('click', startSimulation);
+    els.cancelSimBtn.addEventListener('click', closeSimStartModal);
+    els.closeReportBtn.addEventListener('click', closeReport);
+
+    els.resetStatsBtn.addEventListener('click', ()=>{
+      if(confirm('Reset all saved statistics? This cannot be undone.')){
+        StatsManager.reset();
+        renderDashboard();
+      }
+    });
+
+    els.soundToggleBtn.addEventListener('click', toggleSound);
+    els.themeToggleBtn.addEventListener('click', toggleTheme);
+
+    els.copySeedBtn.addEventListener('click', ()=>{
+      if(!state.puzzle) return;
+      const text = `#${state.puzzle.seed}`;
+      if(navigator.clipboard){
+        navigator.clipboard.writeText(text).catch(()=>{});
+      }
+      els.copySeedBtn.textContent = 'COPIED ✓';
+      setTimeout(()=>{ els.copySeedBtn.textContent = 'COPY SEED'; }, 1400);
+    });
+
+    document.addEventListener('keydown', handleKeydown);
+  }
+
+  /* ---------------- Init ---------------- */
+  function init(){
+    const prefs = StatsManager.get().preferences;
+    state.difficulty = prefs.difficulty || 'easy';
+    SoundManager.setMuted(!!prefs.muted);
+    if(prefs.theme==='light') document.body.classList.add('light-mode');
+
+    updateDifficultyTabs();
+    updateModeTabs();
+    refreshSoundIcon();
+    refreshThemeIcon();
+    wireEvents();
+    renderDashboard();
+    newQuestion();
+  }
+
+  return { init };
+})();
+
+document.addEventListener('DOMContentLoaded', UI.init);
+})();
+</script>
+</body>
+</html>
